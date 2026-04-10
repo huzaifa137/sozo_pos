@@ -27,8 +27,18 @@ return new class extends Migration {
             $table->date('expiry_date')->nullable();
             $table->string('batch_number')->nullable();
             $table->decimal('tax_rate', 5, 2)->default(0); // e.g. 18 for 18%
+
+            $table->boolean('published')->default(true);
+            $table->boolean('featured')->default(false);
+            $table->text('description_long')->nullable();
+            $table->string('slug')->unique()->nullable();
+            $table->unsignedInteger('views')->default(0);
+
             $table->timestamps();
         });
     }
-    public function down(): void { Schema::dropIfExists('inventory_items'); }
+    public function down(): void
+    {
+        Schema::dropIfExists('inventory_items');
+    }
 };
