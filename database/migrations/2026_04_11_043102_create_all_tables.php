@@ -5,8 +5,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
+return new class extends Migration {
     public function up(): void
     {
         // 1. Create users table
@@ -44,9 +43,26 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
-            
+
             $table->index('code');
             $table->index('is_active');
+        });
+
+        Schema::create('subcategories', function (Blueprint $table) {
+            $table->id();
+            $table->string('category_code'); // FK to categories.code
+            $table->string('name');
+            $table->string('display_name');
+            $table->string('code')->unique();
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+
+            $table->foreign('category_code')
+                ->references('code')
+                ->on('categories')
+                ->onDelete('cascade');
+
+            $table->index('category_code');
         });
 
         // 4. Create stock_batches table
@@ -58,7 +74,7 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
-            
+
             $table->index('code');
             $table->index('is_active');
             $table->index('batch_number');
@@ -73,24 +89,24 @@ return new class extends Migration
             $table->string('image_path')->nullable();
             $table->decimal('selling_price', 10, 2);
             $table->decimal('buying_price', 10, 2);
-            
+
             // New foreign key fields
             $table->string('category_code');
             $table->string('batch_code');
-            
+
             // Backward compatibility fields
             $table->string('category')->nullable();
             $table->string('stock_number')->nullable();
-            
+
             $table->integer('quantity')->default(0);
             $table->integer('low_stock_threshold')->default(5);
             $table->text('description')->nullable();
-            
+
             // Variants
             $table->string('size')->nullable();
             $table->string('color')->nullable();
             $table->string('model')->nullable();
-            
+
             // Batch / expiry (for perishables)
             $table->date('expiry_date')->nullable();
             $table->string('batch_number')->nullable();
@@ -103,7 +119,7 @@ return new class extends Migration
             $table->unsignedInteger('views')->default(0);
 
             $table->timestamps();
-            
+
             // Indexes
             $table->index('category_code');
             $table->index('batch_code');
@@ -111,17 +127,26 @@ return new class extends Migration
             $table->index('published');
             $table->index('featured');
             $table->index('quantity');
-            
+
             // Foreign key constraints
             $table->foreign('category_code')
-                  ->references('code')
-                  ->on('categories')
-                  ->onDelete('restrict');
-                  
+                ->references('code')
+                ->on('categories')
+                ->onDelete('restrict');
+
             $table->foreign('batch_code')
-                  ->references('code')
-                  ->on('stock_batches')
-                  ->onDelete('restrict');
+                ->references('code')
+                ->on('stock_batches')
+                ->onDelete('restrict');
+
+            $table->string('subcategory_code')->nullable();
+
+            $table->foreign('subcategory_code')
+                ->references('code')
+                ->on('subcategories')
+                ->onDelete('restrict');
+
+            $table->index('subcategory_code');
         });
 
         // 6. Create sales table

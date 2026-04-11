@@ -7,6 +7,9 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ShopController;
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\StockBatchController;
+use App\Http\Controllers\SubcategoryController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
 
@@ -15,9 +18,14 @@ use Illuminate\Support\Facades\Auth;
 | Public shop routes (landing page = store)
 |--------------------------------------------------------------------------
 */
+Route::get('/', function () {
+    return auth()->check()
+        ? redirect()->route('reports.dashboard')
+        : redirect()->route('login');
+});
 
 // ── E-Commerce Storefront (public) ──
-Route::get('/', [ShopController::class, 'index'])->name('shop.index');
+// Route::get('/', [ShopController::class, 'index'])->name('shop.index');
 Route::get('/shop', [ShopController::class, 'catalog'])->name('shop.catalog');
 Route::get('/shop/product/{slug}', [ShopController::class, 'product'])->name('shop.product');
 
@@ -59,7 +67,7 @@ Route::middleware(['auth'])->group(function () {
 
         // POS Terminal
         Route::get('/pos', [PosController::class, 'index'])->name('pos.terminal');
-        Route::post('/pos/products/load',        [PosController::class, 'loadProducts'])->name('pos.products.load');
+        Route::post('/pos/products/load', [PosController::class, 'loadProducts'])->name('pos.products.load');
         Route::post('/pos/products/search', [PosController::class, 'searchProducts'])->name('pos.products.search');
         Route::post('/pos/sale', [PosController::class, 'store'])->name('pos.sale.store');
         Route::get('/pos/receipt/{sale}', [PosController::class, 'receipt'])->name('pos.receipt');
@@ -86,5 +94,24 @@ Route::middleware(['auth'])->group(function () {
             Route::get('/sales', [ReportController::class, 'sales'])->name('sales');
             Route::get('/inventory', [ReportController::class, 'inventory'])->name('inventory');
         });
+
+        // ── Settings: Categories ──
+        Route::get('/categories', [CategoryController::class, 'index'])->name('categories.index');
+        Route::post('/categories', [CategoryController::class, 'store'])->name('categories.store');
+        Route::put('/categories/{category}', [CategoryController::class, 'update'])->name('categories.update');
+        Route::delete('/categories/{category}', [CategoryController::class, 'destroy'])->name('categories.destroy');
+
+        // ── Settings: Stock Batches ──
+        Route::get('/stock-batches', [StockBatchController::class, 'index'])->name('stock-batches.index');
+        Route::post('/stock-batches', [StockBatchController::class, 'store'])->name('stock-batches.store');
+        Route::put('/stock-batches/{stockBatch}', [StockBatchController::class, 'update'])->name('stock-batches.update');
+        Route::delete('/stock-batches/{stockBatch}', [StockBatchController::class, 'destroy'])->name('stock-batches.destroy');
+
+        // ── Settings: Subcategories ──
+        Route::get('/subcategories', [SubcategoryController::class, 'index'])->name('subcategories.index');
+        Route::post('/subcategories', [SubcategoryController::class, 'store'])->name('subcategories.store');
+        Route::put('/subcategories/{subcategory}', [SubcategoryController::class, 'update'])->name('subcategories.update');
+        Route::delete('/subcategories/{subcategory}', [SubcategoryController::class, 'destroy'])->name('subcategories.destroy');
+
     });
 });

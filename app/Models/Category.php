@@ -58,4 +58,9 @@ class Category extends Model
             ->selectRaw('SUM(quantity * selling_price) as total')
             ->value('total') ?? 0;
     }
+
+    public function subcategories()
+    {
+        return $this->hasMany(Subcategory::class, 'category_code', 'code');
+    }
 }
