@@ -59,6 +59,7 @@ Route::middleware(['auth'])->group(function () {
 
         // POS Terminal
         Route::get('/pos', [PosController::class, 'index'])->name('pos.terminal');
+        Route::post('/pos/products/load',        [PosController::class, 'loadProducts'])->name('pos.products.load');
         Route::post('/pos/products/search', [PosController::class, 'searchProducts'])->name('pos.products.search');
         Route::post('/pos/sale', [PosController::class, 'store'])->name('pos.sale.store');
         Route::get('/pos/receipt/{sale}', [PosController::class, 'receipt'])->name('pos.receipt');

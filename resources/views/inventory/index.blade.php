@@ -314,7 +314,7 @@
         @foreach($items as $item)
         <div class="item-card">
             @if($item->image_path)
-                <img src="{{ asset('storage/' . $item->image_path) }}" alt="{{ $item->name }}" class="item-img">
+                <img src="{{ asset($item->image_path) }}" alt="{{ $item->name }}" class="item-img">
             @else
                 <div class="item-img-placeholder">
                     <svg width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
