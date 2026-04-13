@@ -13,69 +13,63 @@ use Illuminate\Support\Facades\DB;
 
 class PosController extends Controller
 {
-    /**
-     * POS terminal — load customers + filter options.
-     */
     public function index()
     {
-        $customers  = Customer::orderBy('name')
-                              ->get(['id','name','phone','loyalty_points','loyalty_tier']);
-
+        $customers  = Customer::orderBy('name')->get(['id','name','phone','loyalty_points','loyalty_tier']);
         $categories = Category::where('is_active', true)->orderBy('display_name')->get();
         $batches    = StockBatch::where('is_active', true)->orderBy('batch_number')->get();
 
-        return view('pos.terminal', compact('customers', 'categories', 'batches'));
+        // Build subcategoryMap for JS cascade: { "electronics": [{code, display_name},...] }
+        $subcategoryMap = [];
+        if (class_exists(\App\Models\Subcategory::class)) {
+            $subs = \App\Models\Subcategory::where('is_active', true)
+                        ->orderBy('display_name')
+                        ->get(['category_code','code','display_name']);
+            foreach ($subs as $sub) {
+                $subcategoryMap[$sub->category_code][] = [
+                    'code'         => $sub->code,
+                    'display_name' => $sub->display_name,
+                ];
+            }
+        }
+
+        return view('pos.terminal', compact('customers', 'categories', 'batches', 'subcategoryMap'));
     }
 
-    /**
-     * Load default product grid (no search term — called on page load).
-     * Returns up to $limit products, ordered by newest, in stock first.
-     */
     public function loadProducts(Request $request)
     {
         $limit = min((int) $request->input('limit', 60), 120);
-
         $items = InventoryItem::select([
-                        'id','name','category_code','batch_code','image_path',
-                        'selling_price','buying_price','quantity',
-                        'low_stock_threshold','tax_rate',
+                        'id','name','category_code','subcategory_code','batch_code',
+                        'image_path','selling_price','buying_price',
+                        'quantity','low_stock_threshold','tax_rate',
                     ])
-                    ->orderByRaw('quantity > 0 DESC')   // in-stock first
-                    ->orderByDesc('id')                 // newest first
+                    ->orderByRaw('quantity > 0 DESC')
+                    ->orderByDesc('id')
                     ->limit($limit)
                     ->get();
-
         return response()->json($items);
     }
 
-    /**
-     * Search products by name / barcode / SKU.
-     */
     public function searchProducts(Request $request)
     {
-        $term  = trim($request->input('q', ''));
-        $limit = 40;
-
+        $term = trim($request->input('q', ''));
         $items = InventoryItem::select([
-                        'id','name','category_code','batch_code','image_path',
-                        'selling_price','buying_price','quantity',
-                        'low_stock_threshold','tax_rate',
+                        'id','name','category_code','subcategory_code','batch_code',
+                        'image_path','selling_price','buying_price',
+                        'quantity','low_stock_threshold','tax_rate',
                     ])
                     ->where(function ($q) use ($term) {
-                        $q->where('name',    'like', "%{$term}%")
+                        $q->where('name', 'like', "%{$term}%")
                           ->orWhere('barcode', $term)
-                          ->orWhere('sku',     $term);
+                          ->orWhere('sku', $term);
                     })
                     ->orderByRaw('quantity > 0 DESC')
-                    ->limit($limit)
+                    ->limit(40)
                     ->get();
-
         return response()->json($items);
     }
 
-    /**
-     * Process and record a completed sale.
-     */
     public function store(Request $request)
     {
         $request->validate([
@@ -91,39 +85,23 @@ class PosController extends Controller
 
         DB::beginTransaction();
         try {
-            $subtotal  = 0;
-            $taxTotal  = 0;
-            $lineItems = [];
+            $subtotal = 0; $taxTotal = 0; $lineItems = [];
 
             foreach ($request->items as $line) {
                 $item = InventoryItem::lockForUpdate()->findOrFail($line['id']);
-
                 if ($item->quantity < $line['qty']) {
                     DB::rollBack();
-                    return response()->json([
-                        'error' => "Insufficient stock for \"{$item->name}\". Available: {$item->quantity}"
-                    ], 422);
+                    return response()->json(['error' => "Insufficient stock for \"{$item->name}\". Available: {$item->quantity}"], 422);
                 }
-
-                $lineDiscount = (float) ($line['discount'] ?? 0);
+                $lineDiscount = (float)($line['discount'] ?? 0);
                 $linePrice    = ($line['price'] * $line['qty']) - $lineDiscount;
                 $lineTax      = $linePrice * ($item->tax_rate / 100);
-                $lineTotal    = $linePrice + $lineTax;
-
-                $subtotal  += $linePrice;
-                $taxTotal  += $lineTax;
-
-                $lineItems[] = [
-                    'item'       => $item,
-                    'qty'        => $line['qty'],
-                    'unit_price' => $line['price'],
-                    'tax_rate'   => $item->tax_rate,
-                    'discount'   => $lineDiscount,
-                    'line_total' => $lineTotal,
-                ];
+                $subtotal    += $linePrice;
+                $taxTotal    += $lineTax;
+                $lineItems[]  = ['item'=>$item,'qty'=>$line['qty'],'unit_price'=>$line['price'],'tax_rate'=>$item->tax_rate,'discount'=>$lineDiscount,'line_total'=>$linePrice+$lineTax];
             }
 
-            $discountAmount = (float) ($request->discount_amount ?? 0);
+            $discountAmount = (float)($request->discount_amount ?? 0);
             $total          = max(0, $subtotal + $taxTotal - $discountAmount);
             $change         = max(0, $request->amount_paid - $total);
 
@@ -153,61 +131,40 @@ class PosController extends Controller
                     'discount'          => $line['discount'],
                     'line_total'        => $line['line_total'],
                 ]);
-
                 $line['item']->decrement('quantity', $line['qty']);
             }
 
-            // Update customer loyalty
             if ($request->customer_id) {
                 $customer = Customer::find($request->customer_id);
                 if ($customer) {
-                    $customer->increment('loyalty_points', (int) ($total / 1000));
+                    $customer->increment('loyalty_points', (int)($total / 1000));
                     $customer->increment('total_spent', $total);
                     $customer->updateTier();
                 }
             }
 
             DB::commit();
-
-            return response()->json([
-                'success'        => true,
-                'receipt_number' => $sale->receipt_number,
-                'sale_id'        => $sale->id,
-                'change'         => $change,
-                'total'          => $total,
-            ]);
+            return response()->json(['success'=>true,'receipt_number'=>$sale->receipt_number,'sale_id'=>$sale->id,'change'=>$change,'total'=>$total]);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['error' => 'Transaction failed: ' . $e->getMessage()], 500);
+            return response()->json(['error' => 'Transaction failed: '.$e->getMessage()], 500);
         }
     }
 
-    /**
-     * Printable receipt page.
-     */
     public function receipt(Sale $sale)
     {
         $sale->load('items.inventoryItem', 'customer', 'user');
         return view('pos.receipt', compact('sale'));
     }
 
-    /**
-     * Void a sale and restore stock.
-     */
     public function void(Sale $sale)
     {
-        if ($sale->status !== 'completed') {
-            return back()->with('error', 'Only completed sales can be voided.');
-        }
-
+        if ($sale->status !== 'completed') return back()->with('error', 'Only completed sales can be voided.');
         DB::transaction(function () use ($sale) {
-            foreach ($sale->items as $item) {
-                $item->inventoryItem?->increment('quantity', $item->quantity);
-            }
+            foreach ($sale->items as $item) { $item->inventoryItem?->increment('quantity', $item->quantity); }
             $sale->update(['status' => 'voided']);
         });
-
         return back()->with('success', 'Sale voided and stock restored.');
     }
 }
